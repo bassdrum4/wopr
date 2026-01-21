@@ -1,831 +1,234 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>W.O.P.R. GLOBAL COMMAND v8.6</title>
-    
-    <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=VT323&display=swap');
-        body { background: #01080b; color: #00f2ff; font-family: 'VT323', monospace; text-transform: uppercase; overflow: hidden; }
-        
-        /* UI Components */
-        .cyber-panel { background: rgba(0, 10, 15, 0.95); border: 2px solid #00f2ff; box-shadow: 0 0 20px rgba(0, 242, 255, 0.15); }
-        .cyber-button { background: #004455; color: #00f2ff; border: 1px solid #00f2ff; font-family: 'Orbitron'; cursor: pointer; transition: 0.2s; }
-        .cyber-button:hover:not(:disabled) { background: #00f2ff; color: #000; box-shadow: 0 0 15px #00f2ff; }
-        .cyber-button:disabled { opacity: 0.3; cursor: not-allowed; border-color: #444; color: #888; }
-        
-        /* Map & Layout */
-        .map-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; }
-        canvas { background: radial-gradient(circle at center, #021a24 0%, #000 100%); border: 1px solid #004455; cursor: crosshair; }
-        
-        /* Overlays */
-        #overlay-layer { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; }
-        .hidden { display: none !important; }
-        
-        /* HUD Elements */
-        .chat-msg { margin-bottom: 2px; line-height: 1.2; word-wrap: break-word; }
-        .instruction-glow { font-size: 18px; color: #ffcc00; text-shadow: 0 0 5px #ffcc00; font-weight: bold; letter-spacing: 1px; margin-top: 10px; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
-
-        /* Tooltip */
-        #tooltip { position: absolute; bottom: 20px; right: 20px; width: 250px; background: rgba(0, 10, 15, 0.95); border: 1px solid #00f2ff; color: white; padding: 12px; pointer-events: none; z-index: 30; font-family: 'Orbitron'; display: none; box-shadow: 0 0 15px rgba(0, 242, 255, 0.3); }
-        
-        /* Stats */
-        .stats-row { display: flex; justify-content: space-between; font-size: 12px; border-bottom: 1px solid #004455; padding: 4px 0; }
-        .stats-header { font-weight: bold; color: #00f2ff; border-bottom: 2px solid #00f2ff; margin-bottom: 4px; font-size: 12px; }
-
-        /* Frequency Modal */
-        #freq-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 450px; z-index: 60; background: #00111a; border: 2px solid #ffcc00; padding: 30px; box-shadow: 0 0 30px rgba(255, 204, 0, 0.2); text-align: center; }
-        
-        /* Dice */
-        #dice-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; gap: 10px; pointer-events: none; }
-        .die-container { display: flex; gap: 4px; }
-        .die { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 2px solid white; font-size: 18px; font-family: 'Orbitron'; font-weight: bold; background: rgba(0,0,0,0.8); box-shadow: 0 0 10px rgba(255,255,255,0.2); }
-        .die-atk { border-color: #ff0066; color: #ff0066; }
-        .die-def { border-color: #00f2ff; color: #00f2ff; }
-
-        /* Custom Alert */
-        #custom-alert { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 100; background: #330000; border: 2px solid red; color: white; padding: 15px 30px; font-size: 20px; font-weight: bold; box-shadow: 0 0 20px red; display: none; }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>P2P Supabase WebRTC (Embed)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>html,body,#app{height:100%}body{background:#0b0f16;color:#e6edf3}</style>
 </head>
-<body class="p-2 h-screen flex flex-col">
+<body>
+  <div id="app" class="min-h-screen flex items-center justify-center p-6">
+    <div id="root" class="w-full max-w-3xl"></div>
+  </div>
 
-    <div id="custom-alert">SYSTEM ERROR</div>
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
 
-    <div id="overlay-layer">
-        <div id="login-panel" class="cyber-panel p-8 w-[400px] text-center">
-            <h1 class="text-4xl font-bold mb-4 text-white font-orbitron">IDENTIFICATION</h1>
-            <input id="callsign-input" type="text" placeholder="ENTER CALLSIGN" class="bg-black border border-cyan-700 p-3 w-full text-center text-xl text-yellow-500 outline-none mb-4 uppercase" maxlength="10">
-            <div class="flex gap-2">
-                <button onclick="enterLobby(true)" class="cyber-button flex-1 py-3 text-lg font-bold">HOST WAR</button>
-                <button onclick="enterLobby(false)" class="cyber-button flex-1 py-3 text-lg font-bold">JOIN WAR</button>
-            </div>
-        </div>
+    // === CONFIG - replace these with your Supabase values ===
+    const SUPABASE_URL = 'https://egotdjatiuahddtowpdo.supabase.co'
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnb3RkamF0aXVhaGRkdG93cGRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMjg0NDAsImV4cCI6MjA4NDYwNDQ0MH0.HESHFnWwDj5sbsE_m-Fe5XvgLg7NqQuJPncUfo7PsMQ'
+    // =======================================================
 
-        <div id="lobby-panel" class="cyber-panel p-8 w-[500px] text-center max-h-screen overflow-y-auto hidden">
-            <h1 class="text-4xl font-bold mb-4 text-white font-orbitron">GLOBAL COMMAND v8.6</h1>
-            
-            <div id="host-section" class="hidden">
-                <div class="text-xs text-cyan-600 mb-2">OPERATIVES LINKED:</div>
-                <ul id="player-list" class="space-y-1 text-sm text-white min-h-[50px] mb-4 bg-black/50 p-2 border border-cyan-900"></ul>
-                
-                <button onclick="openFreqModal(true)" class="cyber-button w-full py-2 text-sm mb-4 border-yellow-600 text-yellow-500 hover:text-black hover:bg-yellow-600">
-                    [ + ] OPEN SECURE CHANNEL (ADD PLAYER)
-                </button>
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-                <button id="startBtn" onclick="startGame()" disabled class="cyber-button w-full py-3 text-lg font-bold mb-4">INITIALIZE WAR</button>
-                
-                <div id="restore-controls" class="border-t border-cyan-800 pt-2 mb-2">
-                      <label class="text-xs text-green-500 hover:text-green-300 underline cursor-pointer block p-2 border border-dashed border-green-900 hover:border-green-500 transition">
-                        [ UPLOAD FILE TO RESTORE WAR ]
-                        <input type="file" id="save-file-input" class="hidden" accept=".json" onchange="loadGame(this)">
-                      </label>
-                </div>
-            </div>
+    const STUN_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
 
-            <div id="join-section" class="hidden pt-4">
-                <div class="text-xs text-cyan-600 mb-2">CONNECT TO HOST</div>
-                <button onclick="openFreqModal(false)" class="cyber-button w-full py-3 text-lg font-bold">TUNE FREQUENCY</button>
-                <div id="join-status" class="text-yellow-500 text-xs mt-4 h-4"></div>
-            </div>
-        </div>
+    // --- Simple DOM helpers ---
+    const root = document.getElementById('root')
 
-        <div id="freq-modal" class="hidden">
-            <h2 class="text-xl text-yellow-500 font-bold mb-2">SECURE FREQUENCY</h2>
-            <div class="text-xs text-cyan-400 mb-4">
-                ENTER A UNIQUE CHANNEL WORD (e.g. "WARGAMES1")<br>
-                SHARE VERBALLY. NO COPYING REQUIRED.
-            </div>
-            
-            <input id="freq-input" type="text" placeholder="ENTER FREQUENCY..." class="bg-black border border-cyan-700 p-3 w-full text-center text-xl text-green-500 outline-none mb-4 uppercase">
-            
-            <div id="freq-status" class="text-xs text-yellow-500 mb-4 h-4">WAITING FOR INPUT...</div>
+    function el(tag, props = {}, children = []) {
+      const node = document.createElement(tag)
+      Object.entries(props).forEach(([k, v]) => {
+        if (k === 'class') node.className = v
+        else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2).toLowerCase(), v)
+        else node.setAttribute(k, v)
+      })
+      ;(Array.isArray(children) ? children : [children]).forEach(c => {
+        if (typeof c === 'string') node.appendChild(document.createTextNode(c))
+        else if (c instanceof Node) node.appendChild(c)
+      })
+      return node
+    }
 
-            <div class="flex gap-2">
-                <button onclick="closeFreqModal()" class="cyber-button flex-1 py-2 text-xs border-red-500 text-red-500">ABORT</button>
-                <button onclick="connectFreq()" class="cyber-button flex-1 py-2 text-xs font-bold text-green-400 border-green-500">CONNECT</button>
-            </div>
-        </div>
+    // --- App State ---
+    let pc = null
+    let dataChannel = null
+    let channel = null
+    let messages = []
+    let status = 'Searching'
+    let error = null
 
-        <div id="victory-panel" class="cyber-panel p-10 w-[600px] text-center hidden">
-             <h1 class="text-6xl font-bold mb-4 text-yellow-500 font-orbitron">VICTORY</h1>
-             <div id="winner-name" class="text-3xl text-white mb-6">PLAYER 1</div>
-             <div class="text-cyan-300 mb-8">GLOBAL DOMINATION ACHIEVED</div>
-             <button onclick="location.reload()" class="cyber-button px-8 py-3">RESET SYSTEM</button>
-        </div>
-    </div>
+    function renderLobby() {
+      root.innerHTML = ''
+      const form = el('form', { class: 'p-6 bg-gray-800 rounded-md shadow-md', onsubmit: (e) => { e.preventDefault(); joinRoom(roomInput.value.trim(), nickInput.value.trim()) } })
+      form.appendChild(el('h1', { class: 'text-2xl mb-4' }, 'Join a Room'))
+      form.appendChild(el('label', { class: 'block mb-2 text-sm' }, 'Room Name'))
+      const roomInput = el('input', { class: 'w-full p-2 mb-4 rounded bg-gray-700', placeholder: 'room-123' })
+      form.appendChild(roomInput)
+      form.appendChild(el('label', { class: 'block mb-2 text-sm' }, 'Nickname'))
+      const nickInput = el('input', { class: 'w-full p-2 mb-4 rounded bg-gray-700', placeholder: 'Sally' })
+      form.appendChild(nickInput)
+      const joinBtn = el('button', { class: 'w-full bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded' }, 'Join')
+      form.appendChild(joinBtn)
+      root.appendChild(el('div', { class: 'flex items-center justify-center min-h-screen' }, form))
+    }
 
-    <header class="flex justify-between items-center bg-black/50 p-2 border-b border-cyan-900">
-        <div class="flex gap-4 items-center">
-            <div id="phase-badge" class="bg-yellow-600 text-black px-3 py-1 font-bold font-orbitron">PHASE: WAIT</div>
-            <div id="active-player-name" class="text-xl font-bold">---</div>
-        </div>
-        <div class="flex gap-4 items-center">
-             <button onclick="exportSave()" class="cyber-button px-3 py-1 text-xs border-green-500 text-green-400">SAVE</button>
-             <div id="my-identity" class="text-sm font-bold">SPECTATOR</div>
-        </div>
-    </header>
+    function renderRoom(roomId, nickname) {
+      root.innerHTML = ''
+      const container = el('div', { class: 'p-4' })
+      const header = el('div', { class: 'flex justify-between items-center mb-4' })
+      header.appendChild(el('div', {}, [el('div', { class: 'text-sm text-gray-400' }, 'Room'), el('div', { class: 'text-xl' }, roomId)]))
+      header.appendChild(el('div', { class: 'text-right' }, [el('div', { class: 'text-sm text-gray-400' }, 'Nick'), el('div', { class: 'text-lg' }, nickname)]))
+      container.appendChild(header)
 
-    <div class="flex-1 flex overflow-hidden flex-row-reverse">
-        <main class="flex-1 map-container relative">
-           <canvas id="worldCanvas"></canvas>
-            <div id="dice-overlay"></div>
-            <div id="tooltip"></div>
-        </main>
+      const statusDiv = el('div', { class: 'mb-4' }, [el('span', {}, 'Connection Status: '), el('strong', {}, status)])
+      container.appendChild(statusDiv)
+      if (error) container.appendChild(el('div', { class: 'text-red-400 mt-2' }, error))
 
-        <aside class="w-80 bg-black/90 border-r border-cyan-900 p-4 flex flex-col gap-2">
-            <div class="flex gap-2 h-24">
-                <div class="cyber-panel p-2 text-center flex-1 flex flex-col justify-center">
-                    <div class="text-[10px] text-cyan-600">REINFORCEMENTS</div>
-                    <div class="text-4xl font-bold text-white"><span id="reserves">0</span></div>
-                </div>
-                <div class="cyber-panel p-2 text-center flex-1 flex flex-col justify-center relative group">
-                    <div class="text-[10px] text-cyan-600">CARDS HELD</div>
-                    <div class="text-2xl font-bold text-yellow-500"><span id="card-count">0</span></div>
-                    <button id="tradeBtn" onclick="tradeCards()" disabled class="absolute inset-0 bg-green-900/90 text-white text-xs font-bold hidden flex items-center justify-center">TRADE SET</button>
-                </div>
-            </div>
+      const msgBox = el('div', { class: 'bg-gray-800 rounded p-4 mb-4 h-80 overflow-y-auto' })
+      function refreshMessages() {
+        msgBox.innerHTML = ''
+        messages.forEach(m => msgBox.appendChild(el('div', { class: 'mb-2' }, [el('span', { class: 'text-indigo-300 mr-2' }, m.from + ':'), el('span', {}, ' ' + m.text)])))
+      }
+      container.appendChild(msgBox)
 
-            <div class="cyber-panel p-3 flex flex-col justify-between">
-                <div class="flex justify-between items-center mb-1">
-                   <div class="text-xs text-cyan-600">COMMANDS</div>
-                    <button id="undoBtn" onclick="undoAction()" class="text-[10px] border border-red-500 text-red-500 px-2 hover:bg-red-900" disabled>UNDO</button>
-                </div>
-                <button id="nextBtn" onclick="nextPhase()" disabled class="cyber-button w-full py-3 text-sm font-bold">END PHASE</button>
-                <div id="instruction-text" class="instruction-glow text-center text-sm">WAITING...</div>
-            </div>
+      const input = el('input', { class: 'flex-1 p-2 rounded bg-gray-800', placeholder: 'Message (P2P)' })
+      const sendBtn = el('button', { class: 'bg-indigo-600 px-4 rounded ml-2', onclick: () => { sendMessage(input.value); input.value = '' } }, 'Send')
+      const leaveBtn = el('button', { class: 'bg-gray-700 px-4 rounded ml-2', onclick: () => leaveRoom() }, 'Leave')
+      const controls = el('div', { class: 'flex gap-2' }, [input, sendBtn, leaveBtn])
+      container.appendChild(controls)
 
-            <div class="cyber-panel p-2 flex-1 flex flex-col overflow-hidden min-h-0">
-               <div class="text-xs text-cyan-600 border-b border-cyan-900 mb-1">GLOBAL INTEL</div>
-                <div class="flex-1 overflow-y-auto">
-                    <div class="stats-row stats-header">
-                         <span class="w-16">OPERATIVE</span>
-                         <span class="w-8 text-center">TERR</span>
-                        <span class="w-8 text-center">ARMY</span>
-                        <span class="w-8 text-center">INC</span>
-                     </div>
-                    <div id="stats-body" class="space-y-1"></div>
-                </div>
-            </div>
+      root.appendChild(container)
 
-            <div class="cyber-panel p-2 h-64 flex flex-col overflow-hidden">
-                <div class="text-xs text-cyan-600 border-b border-cyan-900 mb-1">SECURE COMMS</div>
-                <div id="chat-history" class="flex-1 overflow-y-auto text-sm text-white mb-2 p-1 bg-black/30"></div>
-                <input id="chat-input" type="text" placeholder="TYPE MESSAGE..." class="bg-black border border-cyan-700 p-1 text-white text-sm outline-none" onkeydown="if(event.key==='Enter') sendChat()">
-            </div>
-        </aside>
-    </div>
+      // expose refresh for update
+      renderRoom._refreshMessages = refreshMessages
+    }
 
-    <script>
-        // --- CONSTANTS ---
-        var canvas = document.getElementById('worldCanvas');
-        var ctx = canvas.getContext('2d');
-        var tooltip = document.getElementById('tooltip');
-        
-        function systemAlert(msg) {
-            const el = document.getElementById('custom-alert');
-            el.innerText = "[!] " + msg; el.style.display = 'block';
-            setTimeout(() => { el.style.display = 'none'; }, 3000);
+    // --- Signaling and WebRTC ---
+    async function joinRoom(roomId, nickname) {
+      if (!roomId || !nickname) return alert('Room and nickname required')
+      messages = []
+      status = 'Searching'
+      error = null
+      renderRoom(roomId, nickname)
+
+      channel = supabase.channel('room:' + roomId)
+      channel.on('broadcast', { event: 'signal' }, handleSignal)
+      await channel.subscribe()
+
+      // ask others to offer
+      channel.send({ type: 'broadcast', event: 'signal', payload: { type: 'request-offer', from: nickname } })
+      status = 'Connecting'
+      renderRoom(roomId, nickname)
+
+      // firewall timeout
+      setTimeout(() => {
+        if (!dataChannel || dataChannel.readyState !== 'open') {
+          error = 'School Firewall Blocked P2P - Try another method.'
+          status = 'Error'
+          renderRoom(roomId, nickname)
         }
+      }, 20000)
+    }
 
-        const P_COLORS = ["#00f2ff", "#ff0066", "#00ff00", "#ffff00", "#ff8800", "#9900ff"];
-        const C_FILLS = ["#4a4a00", "#4a0000", "#00004a", "#4a2500", "#003300", "#2a002a"];
-        const C_NAMES = ["N. AMERICA", "S. AMERICA", "EUROPE", "AFRICA", "ASIA", "AUSTRALIA"];
-        const C_BONUS = [5, 2, 5, 3, 7, 2];
-        const LOCS = [
-            [8,15,"Alaska",0],[16,12,"NW Terr",0],[32,8,"Greenland",0],[16,25,"Alberta",0],[25,25,"Ontario",0],[34,25,"Quebec",0],[15,38,"West US",0],[25,38,"East US",0],[20,52,"Cent Am",0],
-            [28,62,"Venezuela",1],[26,75,"Peru",1],[36,70,"Brazil",1],[34,88,"Argentina",1],
-            [46,15,"Iceland",2],[54,12,"Scand",2],[48,28,"GB",2],[56,28,"N Euro",2],[50,40,"W Euro",2],[58,40,"S Euro",2],[66,25,"Ukraine",2],
-            [50,55,"N Africa",3],[60,55,"Egypt",3],[65,65,"E Africa",3],[58,72,"Congo",3],[60,88,"S Africa",3],[72,82,"Madagasc",3],
-            [70,20,"Ural",4],[80,12,"Siberia",4],[90,12,"Yakutsk",4],[96,20,"Kamchatka",4],[86,25,"Irkutsk",4],[74,38,"Afghan",4],[86,38,"Mongolia",4],[96,40,"Japan",4],[84,50,"China",4],[70,50,"Mid East",4],[80,62,"India",4],[90,62,"Siam",4],
-            [86,80,"Indo",5],[96,75,"N Guinea",5],[88,90,"W Aus",5],[96,90,"E Aus",5]
-        ];
-        const ADJ = {
-            "Alaska": ["NW Terr", "Alberta", "Kamchatka"], "NW Terr": ["Alaska", "Alberta", "Ontario", "Greenland"], "Greenland": ["NW Terr", "Ontario", "Quebec", "Iceland"], "Alberta": ["Alaska", "NW Terr", "Ontario", "West US"], "Ontario": ["NW Terr", "Greenland", "Alberta", "Quebec", "West US", "East US"], "Quebec": ["Greenland", "Ontario", "East US"], "West US": ["Alberta", "Ontario", "East US", "Cent Am"], "East US": ["Ontario", "Quebec", "West US", "Cent Am"], "Cent Am": ["West US", "East US", "Venezuela"],
-            "Venezuela": ["Cent Am", "Peru", "Brazil"], "Peru": ["Venezuela", "Brazil", "Argentina"], "Brazil": ["Venezuela", "Peru", "Argentina", "N Africa"], "Argentina": ["Peru", "Brazil"],
-            "Iceland": ["Greenland", "GB", "Scand"], "Scand": ["Iceland", "GB", "N Euro", "Ukraine"], "GB": ["Iceland", "Scand", "N Euro", "W Euro"], "N Euro": ["GB", "Scand", "Ukraine", "S Euro", "W Euro"], "W Euro": ["GB", "N Euro", "S Euro", "N Africa"], "S Euro": ["N Euro", "W Euro", "Ukraine", "Egypt", "N Africa", "Mid East"], "Ukraine": ["Scand", "N Euro", "S Euro", "Ural", "Afghan", "Mid East"],
-            "N Africa": ["Brazil", "W Euro", "S Euro", "Egypt", "E Africa", "Congo"], "Egypt": ["N Africa", "S Euro", "Mid East", "E Africa"], "E Africa": ["Egypt", "N Africa", "Congo", "S Africa", "Madagasc", "Mid East"], "Congo": ["N Africa", "E Africa", "S Africa"], "S Africa": ["Congo", "E Africa", "Madagasc"], "Madagasc": ["E Africa", "S Africa"],
-            "Ural": ["Ukraine", "Afghan", "China", "Siberia"], "Siberia": ["Ural", "China", "Mongolia", "Irkutsk", "Yakutsk"], "Yakutsk": ["Siberia", "Irkutsk", "Kamchatka"], "Kamchatka": ["Yakutsk", "Irkutsk", "Mongolia", "Japan", "Alaska"], "Irkutsk": ["Siberia", "Yakutsk", "Kamchatka", "Mongolia"], "Afghan": ["Ukraine", "Ural", "China", "India", "Mid East"], "Mongolia": ["Siberia", "Irkutsk", "Kamchatka", "Japan", "China"], "Japan": ["Kamchatka", "Mongolia"], "China": ["Ural", "Siberia", "Mongolia", "Afghan", "India", "Siam"], "Mid East": ["Ukraine", "S Euro", "Egypt", "E Africa", "Afghan", "India"], "India": ["Mid East", "Afghan", "China", "Siam"], "Siam": ["India", "China", "Indo"],
-            "Indo": ["Siam", "N Guinea", "W Aus"], "N Guinea": ["Indo", "E Aus", "W Aus"], "W Aus": ["Indo", "N Guinea", "E Aus"], "E Aus": ["N Guinea", "W Aus"]
-        };
-        const CONTINENTS = [
-            {name: "N. AMERICA", bonus: 5, ids: [0]}, {name: "S. AMERICA", bonus: 2, ids: [1]}, {name: "EUROPE", bonus: 5, ids: [2]}, {name: "AFRICA", bonus: 3, ids: [3]}, {name: "ASIA", bonus: 7, ids: [4]}, {name: "AUSTRALIA", bonus: 2, ids: [5]}
-        ];
+    function sendSignal(payload) {
+      if (!channel) return
+      channel.send({ type: 'broadcast', event: 'signal', payload })
+    }
 
-        // --- STATE & NETWORKING (SIMPLE PEER + MQTT SIGNALING) ---
-        let hostPeers = []; 
-        let clientPeer = null; 
-        let tempPeer = null; 
-        let myCallSign, isHost = false, myPlayerIndex = -1;
-        
-        // MQTT CLIENT FOR SIGNALING
-        let mqttClient = null;
-        const BROKER_URL = "wss://broker.emqx.io:8084/mqtt"; // Free Public Broker
+    async function handleSignal(ev) {
+      const message = ev.payload
+      if (!message) return
 
-        let state = {
-            players: [], turnIndex: 0, phase: "LOBBY", territories: {}, reserves: 0, setupPool: [],
-            fortified: false, selected: null, conqueredThisTurn: false, cardTradeValue: 4, 
-            logs: [], chat: [], lastDice: { atk: [], def: [] }, historyStack: [] 
-        };
+      if (message.type === 'request-offer') {
+        // someone joined, create offer
+        if (!pc) await createOffer()
+      }
 
-        // --- LOGIN FLOW ---
-        function enterLobby(hostMode) {
-            const name = document.getElementById('callsign-input').value.trim().toUpperCase();
-            if(!name) return systemAlert("CALLSIGN REQUIRED");
-            myCallSign = name;
-            isHost = hostMode;
-            
-            document.getElementById('login-panel').classList.add('hidden');
-            document.getElementById('lobby-panel').classList.remove('hidden');
+      if (message.type === 'offer' && message.sdp) {
+        await ensurePC()
+        await pc.setRemoteDescription(new RTCSessionDescription(message.sdp))
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        sendSignal({ type: 'answer', sdp: pc.localDescription })
+      }
 
-            if (isHost) {
-                document.getElementById('host-section').classList.remove('hidden');
-                myPlayerIndex = 0;
-                state.players = [{name: myCallSign, alive: true, ready: false, cards: []}]; 
-                updateLobbyUI();
-            } else {
-                document.getElementById('join-section').classList.remove('hidden');
-            }
-            requestAnimationFrame(drawLoop);
-        }
+      if (message.type === 'answer' && message.sdp) {
+        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(message.sdp))
+      }
 
-        // --- FREQUENCY / MQTT LOGIC ---
-        let currentFreq = "";
-        let isModalHost = false;
+      if (message.type === 'ice' && message.candidate) {
+        try { if (pc) await pc.addIceCandidate(new RTCIceCandidate(message.candidate)) } catch(e){}
+      }
+    }
 
-        function openFreqModal(isHost) {
-            isModalHost = isHost;
-            document.getElementById('freq-modal').classList.remove('hidden');
-            document.getElementById('freq-status').innerText = "ENTER FREQUENCY TO BEGIN...";
-            document.getElementById('freq-input').value = "";
-        }
+    async function ensurePC() {
+      if (pc) return
+      pc = new RTCPeerConnection(STUN_CONFIG)
+      pc.onicecandidate = (e) => { if (e.candidate) sendSignal({ type: 'ice', candidate: e.candidate }) }
+      pc.ondatachannel = (e) => { setupDataChannel(e.channel) }
+      pc.onconnectionstatechange = () => {
+        if (!pc) return
+        if (pc.connectionState === 'connected') { status = 'Connected'; renderCurrentRoom() }
+        if (pc.connectionState === 'failed') { error = 'School Firewall Blocked P2P - Try another method.'; status = 'Error'; renderCurrentRoom() }
+      }
+    }
 
-        function closeFreqModal() {
-            document.getElementById('freq-modal').classList.add('hidden');
-            if (mqttClient) { mqttClient.end(); mqttClient = null; }
-            if (tempPeer && !tempPeer.connected) { tempPeer.destroy(); tempPeer = null; }
-        }
+    async function createOffer() {
+      await ensurePC()
+      const dc = pc.createDataChannel('chat')
+      setupDataChannel(dc)
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      sendSignal({ type: 'offer', sdp: pc.localDescription })
+    }
 
-        function connectFreq() {
-            const freq = document.getElementById('freq-input').value.trim().toUpperCase();
-            if (freq.length < 3) return systemAlert("FREQ TOO SHORT");
-            currentFreq = "wopr_game_" + freq; // Namespace to avoid collisions
-            
-            const status = document.getElementById('freq-status');
-            status.innerText = "TUNING INTO: " + freq + "...";
+    function setupDataChannel(dc) {
+      dataChannel = dc
+      dataChannel.onopen = () => {
+        status = 'Connected'
+        // stop using Supabase for messaging
+        if (channel) channel.unsubscribe()
+        renderCurrentRoom()
+      }
+      dataChannel.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data)
+          if (payload.type === 'chat') {
+            messages.push({ from: payload.nick, text: payload.text })
+            if (renderRoom._refreshMessages) renderRoom._refreshMessages()
+          }
+        } catch (err) {}
+      }
+      dataChannel.onclose = () => { status = 'Searching'; renderCurrentRoom() }
+    }
 
-            // 1. Connect to Public MQTT Broker
-            mqttClient = mqtt.connect(BROKER_URL);
+    function renderCurrentRoom() {
+      // attempt to re-render room using last known room/nick from the current channel name
+      if (!channel) return
+      const name = channel.topic || ''
+      const roomId = name.replace('room:', '')
+      // we don't keep nickname here, but UI doesn't strictly need it on re-render
+      renderRoom(roomId, '')
+      if (renderRoom._refreshMessages) renderRoom._refreshMessages()
+    }
 
-            mqttClient.on('connect', () => {
-                status.innerText = "CHANNEL OPEN. HANDSHAKING...";
-                initPeerConnection();
-            });
+    function sendMessage(text) {
+      if (!text) return
+      const payload = { type: 'chat', nick: 'Peer', text, ts: Date.now() }
+      if (dataChannel && dataChannel.readyState === 'open') {
+        dataChannel.send(JSON.stringify(payload))
+        messages.push({ from: 'You', text })
+        if (renderRoom._refreshMessages) renderRoom._refreshMessages()
+      } else {
+        alert('Not connected P2P yet')
+      }
+    }
 
-            mqttClient.on('error', (err) => {
-                status.innerText = "SIGNAL ERROR: " + err.message;
-            });
-        }
+    function leaveRoom() {
+      if (channel) { try { channel.unsubscribe() } catch(e){} channel = null }
+      if (pc) { try { pc.close() } catch(e){} pc = null }
+      dataChannel = null
+      messages = []
+      status = 'Searching'
+      error = null
+      renderLobby()
+    }
 
+    // initial render
+    renderLobby()
 
-        function initPeerConnection() {
-            const status = document.getElementById('freq-status');
-            
-            const topicOffer = `${currentFreq}/offer`;
-            const topicAnswer = `${currentFreq}/answer`;
-            const topicReady = `${currentFreq}/ready`;
-
-            if (isModalHost) {
-                // --- HOST LOGIC ---
-                // 1. Subscribe to ready signal and answer
-                mqttClient.subscribe([topicReady, topicAnswer]);
-                
-                let offerData = null;
-                tempPeer = new SimplePeer({ initiator: true, trickle: false });
-                
-                // 2. Store offer when generated
-                tempPeer.on('signal', data => {
-                    if(data.type === 'offer') {
-                        offerData = data;
-                        status.innerText = "WAITING FOR CLIENT...";
-                    }
-                });
-
-                // 3. Listen for messages
-                mqttClient.on('message', (topic, message) => {
-                    if (topic === topicReady && offerData) {
-                        // Client is ready, now publish offer
-                        status.innerText = "BROADCASTING OFFER...";
-                        mqttClient.publish(topicOffer, JSON.stringify(offerData));
-                    } else if (topic === topicAnswer) {
-                        try {
-                            const signal = JSON.parse(message.toString());
-                            status.innerText = "ANSWER RECEIVED. LINKING...";
-                            tempPeer.signal(signal);
-                        } catch(e) { console.error(e); }
-                    }
-                });
-
-                tempPeer.on('connect', () => {
-                    finalizeConnection(tempPeer);
-                });
-
-            } else {
-                // --- CLIENT LOGIC ---
-                // 1. Subscribe to offer first
-                mqttClient.subscribe(topicOffer);
-                
-                let offerReceived = false;
-                tempPeer = new SimplePeer({ initiator: false, trickle: false });
-
-                // 2. Signal host that client is ready
-                status.innerText = "SIGNALING READY...";
-                mqttClient.publish(topicReady, "READY");
-
-                // 3. Listen for offer
-                mqttClient.on('message', (topic, message) => {
-                    if (topic === topicOffer && !offerReceived) {
-                        offerReceived = true;
-                        try {
-                            const signal = JSON.parse(message.toString());
-                            status.innerText = "OFFER RECEIVED. REPLYING...";
-                            tempPeer.signal(signal);
-                        } catch(e) { console.error(e); }
-                    }
-                });
-
-                // 4. Generate and publish answer
-                tempPeer.on('signal', data => {
-                    if(data.type === 'answer') {
-                        status.innerText = "SENDING ANSWER...";
-                        mqttClient.publish(topicAnswer, JSON.stringify(data));
-                    }
-                });
-
-                tempPeer.on('connect', () => {
-                    finalizeConnection(tempPeer);
-                });
-            }
-
-            // Data Handler (Common)
-            tempPeer.on('data', data => handleData(data, tempPeer));
-        }
-
-        function finalizeConnection(peer) {
-            // Disconnect MQTT (Mailbox no longer needed)
-            if(mqttClient) { mqttClient.end(); mqttClient = null; }
-            closeFreqModal();
-            systemAlert("SECURE LINK ESTABLISHED");
-
-            if (isModalHost) {
-                const newIdx = state.players.length;
-                hostPeers.push({ peer: peer, index: newIdx });
-                peer.send(JSON.stringify({ type: 'WELCOME', index: newIdx, players: state.players }));
-            } else {
-                clientPeer = peer;
-                document.getElementById('join-section').innerHTML = "<div class='text-green-500 font-bold'>CONNECTED TO HOST</div>";
-            }
-        }
-
-        function handleData(raw, sourcePeer) {
-            const data = JSON.parse(raw);
-
-            if (isHost) {
-                if (data.type === 'HELLO') {
-                    state.players.push({name: data.name, alive: true, ready: false, cards: []});
-                    updateLobbyUI();
-                    broadcastState();
-                } else {
-                    const pEntry = hostPeers.find(p => p.peer === sourcePeer);
-                    if (pEntry) handleClientInput(pEntry.index, data);
-                }
-            } else {
-                if (data.type === 'WELCOME') {
-                    myPlayerIndex = data.index; state.players = data.players;
-                    updateLobbyUI();
-                    clientPeer.send(JSON.stringify({ type: 'HELLO', name: myCallSign }));
-                } else {
-                    state = data;
-                    if (state.phase !== "LOBBY") document.getElementById('overlay-layer').classList.add('hidden');
-                    else updateLobbyUI();
-                    updateHUD(); 
-                }
-            }
-        }
-
-        function broadcastState() {
-            if (!isHost) return;
-            updateHUD(); 
-            const msg = JSON.stringify(state);
-            hostPeers.forEach(p => { if(p.peer.connected) p.peer.send(msg); });
-            if(state.phase === "GAME_OVER") showVictory();
-        }
-
-        function sendToHost(msg) {
-            if (clientPeer && clientPeer.connected) clientPeer.send(JSON.stringify(msg));
-        }
-
-        // --- GAME ACTIONS (UNCHANGED) ---
-        function startGame() {
-            if(state.players.length < 2) return systemAlert("NEED 2+ PLAYERS");
-            LOCS.forEach(l => { state.territories[l[2]] = { owner: -1, armies: 0 }; });
-            let deck = [...LOCS].sort(() => Math.random() - 0.5);
-            deck.forEach((card, i) => {
-                let owner = i % state.players.length;
-                state.territories[card[2]] = { owner: owner, armies: 1 };
-            });
-            const pools = {2: 40, 3: 35, 4: 30, 5: 25, 6: 20};
-            let startAmt = pools[state.players.length] || 30;
-            state.setupPool = state.players.map((p, idx) => {
-                let held = Object.values(state.territories).filter(t => t.owner === idx).length;
-                return Math.max(0, startAmt - held);
-            });
-            state.phase = "SETUP"; state.turnIndex = -1; state.logs.push("--- WAR STARTED ---");
-            state.historyStack = []; 
-            broadcastState();
-            document.getElementById('overlay-layer').classList.add('hidden');
-        }
-
-        function handleClientInput(pIndex, data) { 
-            if (data.type === "UNDO") { 
-                if((pIndex === state.turnIndex || state.phase === "SETUP") && state.historyStack.length > 0) { 
-                    restoreHistory(); broadcastState(); 
-                } 
-                return;
-            }
-            if (data.type === "TRADE") { 
-                if (pIndex === state.turnIndex && state.phase === "REINFORCE") processTrade(pIndex);
-                broadcastState(); return;
-            }
-            processAction(data, pIndex);
-        }
-
-        // --- HISTORY & ACTIONS ---
-        function saveHistory() { 
-            if (!isHost) return;
-            if (state.historyStack.length > 20) state.historyStack.shift();
-            const snapshot = JSON.stringify({ 
-                territories: state.territories, reserves: state.reserves, 
-                fortified: state.fortified, setupPool: state.setupPool, selected: state.selected
-            });
-            state.historyStack.push(snapshot);
-        }
-
-        function restoreHistory() { 
-            if (!state.historyStack || state.historyStack.length === 0) return;
-            const snap = JSON.parse(state.historyStack.pop());
-            state.territories = snap.territories; state.reserves = snap.reserves; 
-            state.fortified = snap.fortified; state.setupPool = snap.setupPool || [];
-            state.selected = snap.selected;
-        }
-
-        function processAction(action, pIndex = myPlayerIndex) {
-            if (action.type === "UNDO") {
-                if ((pIndex === state.turnIndex || state.phase === "SETUP") && state.historyStack && state.historyStack.length > 0) {
-                    restoreHistory(); broadcastState();
-                }
-                return;
-            }
-            if (action.type === "CHAT") state.chat.push({name: state.players[pIndex].name, msg: action.msg});
-            else if (state.phase === "SETUP") {
-                if (action.type === "CLICK") {
-                    const t = state.territories[action.target];
-                    if (t.owner === pIndex && state.setupPool[pIndex] > 0) { 
-                        saveHistory(); t.armies++; state.setupPool[pIndex]--;
-                    }
-                } else if (action.type === "READY") {
-                    state.players[pIndex].ready = true;
-                    if (state.players.every(p => p.ready)) {
-                        state.phase = "REINFORCE"; state.turnIndex = 0; state.reserves = calculateReserves(0);
-                        state.conqueredThisTurn = false; state.historyStack = []; saveHistory();
-                    }
-                }
-            }
-            else if (pIndex === state.turnIndex) {
-                if (state.phase === "REINFORCE" && action.type === "CLICK") {
-                    const t = state.territories[action.target];
-                    if (t.owner === pIndex && state.reserves > 0) { 
-                        saveHistory(); t.armies++; state.reserves--;
-                    }
-                }
-                else if (state.phase === "ATTACK" && action.type === "CLICK") attackLogic(action.target);
-                else if (state.phase === "FORTIFY" && action.type === "CLICK") fortifyLogic(action.target);
-                else if (action.type === "PHASE") { saveHistory(); advancePhase(); }
-            }
-            broadcastState();
-        }
-
-        function attackLogic(name) {
-            const t = state.territories[name];
-            if (t.owner === state.turnIndex) { state.selected = name; } 
-            else if (state.selected && ADJ[state.selected].includes(name)) {
-                 const src = state.territories[state.selected];
-                 if (src.armies > 1) resolveCombat(state.selected, name);
-            }
-        }
-
-        function resolveCombat(atkN, defN) {
-            const atk = state.territories[atkN];
-            const def = state.territories[defN];
-            let aC = Math.min(3, atk.armies - 1);
-            let dC = Math.min(2, def.armies);
-            let aR = Array(aC).fill(0).map(() => Math.ceil(Math.random() * 6)).sort((a,b)=>b-a);
-            let dR = Array(dC).fill(0).map(() => Math.ceil(Math.random() * 6)).sort((a,b)=>b-a);
-            state.lastDice = { atk: aR, def: dR };
-
-            let aL = 0, dL = 0;
-            for (let i = 0; i < Math.min(aC, dC); i++) {
-                if (aR[i] > dR[i]) dL++; else aL++;
-            }
-            atk.armies -= aL; def.armies -= dL;
-            if (def.armies <= 0) {
-                state.conqueredThisTurn = true; def.owner = state.turnIndex; def.armies = aC;
-                atk.armies -= aC; state.selected = null; checkWinCondition();
-            }
-        }
-
-        function fortifyLogic(name) {
-            if (state.fortified) return;
-            const t = state.territories[name];
-            if (!state.selected) { 
-                if (t.owner === state.turnIndex && t.armies > 1) state.selected = name; 
-            } else {
-                if (name === state.selected) { state.selected = null; return; }
-                if (t.owner === state.turnIndex && ADJ[state.selected].includes(name)) {
-                    saveHistory();
-                    const src = state.territories[state.selected];
-                    const moveAmt = src.armies - 1;
-                    src.armies = 1; t.armies += moveAmt;
-                    state.fortified = true; state.selected = null;
-                }
-            }
-        }
-
-        function advancePhase() {
-            if (state.phase === "REINFORCE") { 
-                if (state.reserves === 0) { state.phase = "ATTACK"; state.selected = null; state.historyStack = []; } 
-            } 
-            else if (state.phase === "ATTACK") { state.phase = "FORTIFY"; state.selected = null; state.fortified = false; state.historyStack = []; } 
-            else if (state.phase === "FORTIFY") endTurn();
-        }
-
-        function drawCard(pid) { state.players[pid].cards.push(Math.floor(Math.random() * 3)); }
-        
-        function processTrade(pid) {
-            const hand = state.players[pid].cards;
-            let counts = [0,0,0]; hand.forEach(c => counts[c]++);
-            let typeIdx = counts.findIndex(c => c >= 3);
-            saveHistory();
-            if (typeIdx !== -1) {
-                let found = 0;
-                state.players[pid].cards = hand.filter(c => { if (c === typeIdx && found < 3) { found++; return false; } return true; });
-            } else if (counts[0]>0 && counts[1]>0 && counts[2]>0) {
-                [0,1,2].forEach(t => { let idx = state.players[pid].cards.indexOf(t); if(idx>-1) state.players[pid].cards.splice(idx,1); });
-            } else return;
-            state.reserves += state.cardTradeValue;
-            if (state.cardTradeValue < 12) state.cardTradeValue += 2;
-            else if (state.cardTradeValue === 12) state.cardTradeValue = 15; else state.cardTradeValue += 5;
-        }
-
-        function hasValidSet(hand) {
-            let counts = [0,0,0]; hand.forEach(c => counts[c]++);
-            return counts.some(c => c >= 3) || (counts[0]>0 && counts[1]>0 && counts[2]>0);
-        }
-
-        function endTurn() {
-            if (state.conqueredThisTurn) drawCard(state.turnIndex);
-            state.selected = null; state.lastDice = { atk: [], def: [] }; state.historyStack = []; 
-            let attempts = 0;
-            do { state.turnIndex = (state.turnIndex + 1) % state.players.length; attempts++; } while (isPlayerDead(state.turnIndex) && attempts < 6);
-            state.phase = "REINFORCE"; state.conqueredThisTurn = false; state.reserves = calculateReserves(state.turnIndex);
-        }
-
-        function calculateReserves(pid) {
-            let terrs = Object.values(state.territories).filter(t => t && t.owner === pid);
-            let count = terrs.length; let base = Math.max(3, Math.floor(count / 3));
-            CONTINENTS.forEach(c => {
-                const contTerrs = LOCS.filter(l => c.ids.includes(l[3]));
-                if (contTerrs.length && contTerrs.every(l => {
-                    const t = state.territories[l[2]]; return t && t.owner === pid;
-                })) base += c.bonus;
-            });
-            return base;
-        }
-
-        function isPlayerDead(pid) { return Object.values(state.territories).filter(t => t.owner === pid).length === 0; }
-        function checkWinCondition() { if ([...new Set(Object.values(state.territories).map(t => t.owner))].filter(o=>o!==-1).length === 1) { state.phase = "GAME_OVER"; broadcastState(); } }
-        
-        function showVictory() {
-            document.getElementById('overlay-layer').classList.remove('hidden');
-            document.getElementById('login-panel').classList.add('hidden');
-            document.getElementById('lobby-panel').classList.add('hidden');
-            document.getElementById('victory-panel').classList.remove('hidden');
-            document.getElementById('winner-name').innerText = state.players[state.turnIndex].name;
-            document.getElementById('winner-name').style.color = P_COLORS[state.turnIndex];
-        }
-
-        // --- DRAWING ---
-        function drawLoop() {
-            canvas.width = 1000; canvas.height = 750; ctx.clearRect(0,0,1000,750);
-            
-            for (let name in ADJ) {
-                const from = LOCS.find(l => l[2] === name);
-                ADJ[name].forEach(targetName => {
-                    const to = LOCS.find(l => l[2] === targetName);
-                    let highlight = false;
-                    if (state.phase === "ATTACK" && state.selected === name) {
-                        const fromTerr = state.territories[name];
-                        const toTerr = state.territories[targetName];
-                        if (fromTerr && toTerr && fromTerr.owner === state.turnIndex && toTerr.owner !== state.turnIndex) highlight = true;
-                    }
-                    ctx.lineWidth = highlight ? 4 : 1;
-                    ctx.strokeStyle = highlight ? "#ff0066" : "#004455"; 
-                    ctx.shadowBlur = highlight ? 15 : 0; ctx.shadowColor = highlight ? "#ff0066" : "#000";
-
-                    ctx.beginPath();
-                    if ((name==="Alaska" && targetName==="Kamchatka") || (name==="Kamchatka" && targetName==="Alaska")) {
-                        ctx.moveTo(from[0]*10, from[1]*7.5); ctx.lineTo(from[0]<50?0:1000, from[1]*7.5);
-                    } else {
-                        ctx.moveTo(from[0]*10, from[1]*7.5); ctx.lineTo(to[0]*10, to[1]*7.5);
-                    }
-                    ctx.stroke(); ctx.shadowBlur = 0;
-                });
-            }
-
-            LOCS.forEach(l => {
-                const [x,y,name,contId] = [l[0]*10, l[1]*7.5, l[2], l[3]];
-                const t = state.territories[name]; if (!t) return;
-                const isSelected = state.selected === name;
-                
-                ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI*2); 
-                ctx.fillStyle = C_FILLS[contId]; ctx.fill();
-                ctx.lineWidth = isSelected ? 5 : 3; 
-                ctx.strokeStyle = t.owner > -1 ? P_COLORS[t.owner] : "#444"; 
-                if(isSelected) { ctx.shadowBlur = 20; ctx.shadowColor = "#fff"; } else ctx.shadowBlur=0;
-                ctx.stroke(); ctx.shadowBlur=0;
-
-                ctx.fillStyle = "#fff";
-                ctx.font = "bold 14px Orbitron"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-                ctx.fillText(t.armies, x, y);
-            });
-            requestAnimationFrame(drawLoop);
-        }
-
-        canvas.addEventListener('mousedown', e => {
-            if (state.phase === "LOBBY" || state.phase === "GAME_OVER") return;
-            const rect = canvas.getBoundingClientRect();
-            const mx = (e.clientX - rect.left) * (1000/rect.width), my = (e.clientY - rect.top) * (750/rect.height);
-            let hit = LOCS.find(l => Math.hypot(mx-l[0]*10, my-l[1]*7.5) < 25);
-            if (hit) {
-                const action = { type: "CLICK", target: hit[2] };
-                if (isHost) processAction(action, myPlayerIndex); else sendToHost(action);
-            }
-        });
-
-        canvas.addEventListener('mousemove', e => {
-            if (state.phase === "LOBBY") return;
-            const rect = canvas.getBoundingClientRect();
-            const mx = (e.clientX - rect.left) * (1000/rect.width), my = (e.clientY - rect.top) * (750/rect.height);
-            let hit = LOCS.find(l => Math.hypot(mx-l[0]*10, my-l[1]*7.5) < 25);
-            if (hit) {
-                const t = state.territories[hit[2]];
-                const ownerName = t.owner > -1 ? state.players[t.owner].name : "NEUTRAL";
-                const ownerColor = t.owner > -1 ? P_COLORS[t.owner] : "#888";
-                tooltip.style.display = 'block';
-                tooltip.style.borderColor = P_COLORS[t.owner] || "#444"; 
-                tooltip.innerHTML = `
-                    <div style="font-size:16px; font-weight:bold; color:#fff; border-bottom:1px solid #444; margin-bottom:4px;">${hit[2]}</div>
-                    <div class="flex justify-between text-xs mb-1">
-                        <span style="color:#aaa">CONTINENT:</span>
-                        <span style="color:${P_COLORS[hit[3]] || '#fff'}">${C_NAMES[hit[3]]} (+${C_BONUS[hit[3]]})</span>
-                    </div>
-                    <div class="flex justify-between text-xs mb-1">
-                        <span style="color:#aaa">CONTROL:</span>
-                        <span style="color:${ownerColor}; font-weight:bold">${ownerName}</span>
-                    </div>
-                    <div class="flex justify-between text-lg">
-                        <span style="color:#aaa">ARMIES:</span>
-                        <span style="color:#fff; font-weight:bold">${t.armies}</span>
-                    </div>
-                `;
-            } else { tooltip.style.display = 'none'; }
-        });
-
-        function updateHUD() {
-            const isMe = (state.phase === "SETUP") ? true : (state.turnIndex === myPlayerIndex);
-            document.getElementById('phase-badge').innerText = state.phase;
-            if(state.turnIndex > -1 && state.players[state.turnIndex]) {
-                const p = state.players[state.turnIndex];
-                document.getElementById('active-player-name').innerText = p.name;
-                document.getElementById('active-player-name').style.color = P_COLORS[state.turnIndex];
-            }
-            if(myPlayerIndex > -1) {
-                document.getElementById('my-identity').innerText = `ID: ${state.players[myPlayerIndex].name}`;
-                document.getElementById('my-identity').style.color = P_COLORS[myPlayerIndex];
-                const myCards = state.players[myPlayerIndex].cards || [];
-                document.getElementById('card-count').innerText = myCards.length;
-                const tradeBtn = document.getElementById('tradeBtn');
-                if (state.phase === "REINFORCE" && isMe && hasValidSet(myCards)) { tradeBtn.classList.remove('hidden'); tradeBtn.disabled = false; } 
-                else { tradeBtn.classList.add('hidden'); tradeBtn.disabled = true; }
-            }
-            
-            const undoBtn = document.getElementById('undoBtn');
-            const canUndo = isMe && (state.phase === "REINFORCE" || state.phase === "FORTIFY" || state.phase === "SETUP") && state.historyStack && state.historyStack.length > 0;
-            undoBtn.disabled = !canUndo; undoBtn.style.opacity = canUndo ? 1 : 0.3;
-            
-            if (state.phase === "SETUP") document.getElementById('reserves').innerText = state.setupPool[myPlayerIndex];
-            else document.getElementById('reserves').innerText = (state.turnIndex === myPlayerIndex) ? state.reserves : "-";
-
-            let instr = "";
-            const btn = document.getElementById('nextBtn');
-            btn.disabled = true;
-            if (state.phase === "SETUP") {
-                instr = "DEPLOY FORCES"; btn.innerText = "FINISH";
-                if (state.setupPool[myPlayerIndex] === 0) {
-                     if (state.players[myPlayerIndex].ready) { btn.innerText = "WAITING..."; btn.disabled = true; } 
-                     else btn.disabled = false;
-                }
-            } else if (state.phase === "GAME_OVER") { instr = "WAR ENDED"; btn.disabled = true; } 
-            else {
-                if (!isMe) instr = `WAITING FOR COMMANDER`;
-                else {
-                    if (state.phase === "REINFORCE") { instr = "DEPLOY TROOPS"; btn.innerText = "NEXT PHASE"; btn.disabled = state.reserves > 0; }
-                    else if (state.phase === "ATTACK") { instr = "SELECT -> ATTACK"; btn.innerText = "END ATTACKS"; btn.disabled = false; }
-                    else if (state.phase === "FORTIFY") { instr = "MOVE TROOPS (ONCE)"; btn.innerText = "END TURN"; btn.disabled = false; }
-                }
-            }
-            document.getElementById('instruction-text').innerText = instr;
-
-            const sBody = document.getElementById('stats-body');
-            sBody.innerHTML = state.players.map((p, i) => {
-                const terrs = Object.values(state.territories).filter(t => t && t.owner === i).length;
-                const armies = Object.values(state.territories).filter(t => t && t.owner === i).reduce((a,b)=>a+b.armies,0);
-                const cards = p.cards ? p.cards.length : 0;
-                const income = calculateReserves(i); 
-                return `
-                <div class="stats-row" style="${!p.alive ? 'opacity:0.3' : ''}">
-                    <span style="color:${P_COLORS[i]}" class="w-16 truncate">${p.name}</span>
-                    <span class="w-8 text-center text-white">${terrs}</span>
-                    <span class="w-8 text-center text-yellow-500">${armies}</span>
-                    <span class="w-8 text-center text-green-400">${cards}</span>
-                    <span class="w-8 text-center text-cyan-400">+${income}</span>
-                </div>`;
-            }).join('');
-            const chat = document.getElementById('chat-history');
-            chat.innerHTML = state.chat.slice(-20).map(c => `<div class="chat-msg"><span class="chat-name" style="color:#00f2ff">${c.name}:</span> ${c.msg}</div>`).join('');
-            chat.scrollTop = chat.scrollHeight;
-
-            const dOverlay = document.getElementById('dice-overlay');
-            let dH = "<div class='die-container'>";
-            state.lastDice.atk.forEach(d => dH += `<div class='die die-atk'>${d}</div>`);
-            dH += "</div><div class='die-container'>";
-            state.lastDice.def.forEach(d => dH += `<div class='die die-def'>${d}</div>`);
-            dH += "</div>";
-            dOverlay.innerHTML = dH;
-        }
-
-        function nextPhase() { if (isHost) processAction({type: state.phase==="SETUP"?"READY":"PHASE"}, myPlayerIndex); else sendToHost({type: state.phase==="SETUP"?"READY":"PHASE"}); }
-        function undoAction() { if (isHost) processAction({type:"UNDO"}, myPlayerIndex); else sendToHost({type:"UNDO"}); }
-        function tradeCards() { if (isHost) handleClientInput(myPlayerIndex, {type:"TRADE"}); else sendToHost({type:"TRADE"}); }
-        function sendChat() { const input = document.getElementById('chat-input'); if(input.value) { if (isHost) processAction({type: "CHAT", msg: input.value}, myPlayerIndex); else sendToHost({type: "CHAT", msg: input.value}); input.value = ""; } }
-        
-        function updateLobbyUI() {
-            document.getElementById('player-list').innerHTML = state.players.map((p,i)=>`<li style="color:${P_COLORS[i]}">${p.name} ${p.ready?'[READY]':''} ${i===0?'(HOST)':''}</li>`).join('');
-            if(isHost) { 
-                const b=document.getElementById('startBtn');
-                b.innerText = `INITIALIZE WAR (${state.players.length})`; b.disabled = state.players.length < 2; 
-            }
-        }
-
-        function exportSave() { 
-            const saveStr = JSON.stringify(state);
-            const blob = new Blob([saveStr], {type: "application/json"});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = `WOPR_SAVE_TURN_${state.turnIndex}.json`;
-            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-        }
-
-        function loadGame(input) { 
-            const file = input.files[0]; if(!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try { 
-                    const d = JSON.parse(e.target.result);
-                    if(d.players && d.players.length !== state.players.length) return systemAlert("PLAYER COUNT MISMATCH");
-                    state.territories = d.territories; state.reserves = d.reserves; state.phase = d.phase; 
-                    state.turnIndex = d.turnIndex; state.setupPool = d.setupPool || [];
-                    state.cardTradeValue = d.cardTradeValue || 4; state.historyStack = []; 
-                    if(d.players) { d.players.forEach((p, i) => { if(state.players[i]) { state.players[i].cards = p.cards; state.players[i].alive = p.alive; } }); }
-                    broadcastState(); document.getElementById('overlay-layer').classList.add('hidden'); 
-                } catch(err) { systemAlert("BAD SAVE FILE"); } 
-            };
-            reader.readAsText(file);
-        }
-    </script>
+  </script>
 </body>
 </html>
